@@ -122,3 +122,4 @@ dist
 
 # Supabase
 supabase/functions/**/.env
+.vercel
