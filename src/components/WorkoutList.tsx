@@ -17,9 +17,10 @@ import {
 
 interface WorkoutListProps {
     studentId: string;
+    readOnly?: boolean;
 }
 
-const WorkoutList = ({ studentId }: WorkoutListProps) => {
+const WorkoutList = ({ studentId, readOnly = false }: WorkoutListProps) => {
     const { data: workouts, isLoading } = useWorkouts(studentId);
     const deleteWorkout = useDeleteWorkout();
 
@@ -59,30 +60,32 @@ const WorkoutList = ({ studentId }: WorkoutListProps) => {
                                 </CardDescription>
                             </div>
 
-                            <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive">
-                                        <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                        <AlertDialogTitle>Excluir treino?</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            Essa ação não pode ser desfeita. O treino será permanentemente removido.
-                                        </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                        <AlertDialogAction
-                                            onClick={() => deleteWorkout.mutate(workout.id)}
-                                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                        >
-                                            Excluir
-                                        </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                            </AlertDialog>
+                            {!readOnly && (
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive">
+                                            <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                            <AlertDialogTitle>Excluir treino?</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                                Essa ação não pode ser desfeita. O treino será permanentemente removido.
+                                            </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                            <AlertDialogAction
+                                                onClick={() => deleteWorkout.mutate(workout.id)}
+                                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                            >
+                                                Excluir
+                                            </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+                            )}
                         </div>
                         {workout.description && (
                             <p className="text-sm text-muted-foreground mt-2 flex items-start gap-2">

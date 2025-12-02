@@ -7,7 +7,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Trash2, Save, X, Download } from "lucide-react";
+import { Plus, Trash2, Save, X, Download, ArrowUp, ArrowDown, Wand2, Activity, Coffee } from "lucide-react";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { EXERCISE_CATEGORIES, ROUTINE_TYPES } from "@/constants/exercises";
 import { useCreateWorkout, WorkoutDay, WorkoutExercise } from "@/hooks/useWorkouts";
 import WorkoutTemplateSelector from "@/components/WorkoutTemplateSelector";
@@ -83,6 +89,52 @@ const WorkoutCreator = ({ studentId, onSuccess, onCancel }: WorkoutCreatorProps)
     const handleRemoveExercise = (dayIndex: number, exerciseIndex: number) => {
         const updatedDays = [...days];
         updatedDays[dayIndex].exercises = updatedDays[dayIndex].exercises.filter((_, i) => i !== exerciseIndex);
+        // Reorder remaining
+        updatedDays[dayIndex].exercises.forEach((ex, i) => ex.exercise_order = i + 1);
+        setDays(updatedDays);
+    };
+
+    const handleMoveExercise = (dayIndex: number, exerciseIndex: number, direction: "up" | "down") => {
+        const updatedDays = [...days];
+        const exercises = updatedDays[dayIndex].exercises;
+
+        if (direction === "up" && exerciseIndex > 0) {
+            [exercises[exerciseIndex], exercises[exerciseIndex - 1]] = [exercises[exerciseIndex - 1], exercises[exerciseIndex]];
+        } else if (direction === "down" && exerciseIndex < exercises.length - 1) {
+            [exercises[exerciseIndex], exercises[exerciseIndex + 1]] = [exercises[exerciseIndex + 1], exercises[exerciseIndex]];
+        }
+
+        // Update order numbers
+        exercises.forEach((ex, i) => ex.exercise_order = i + 1);
+        setDays(updatedDays);
+    };
+
+    const handleSetDayType = (dayIndex: number, type: "cardio" | "rest") => {
+        const updatedDays = [...days];
+        const day = updatedDays[dayIndex];
+
+        if (type === "cardio") {
+            day.name = "Cardio";
+            day.exercises = [{
+                exercise_name: "Cardio",
+                sets: 1,
+                reps: "30-45 min",
+                rest_time: "-",
+                notes: "Intensidade moderada",
+                exercise_order: 1
+            }];
+        } else if (type === "rest") {
+            day.name = "Descanso";
+            day.exercises = [{
+                exercise_name: "Descanso Total",
+                sets: 1,
+                reps: "Dia Completo",
+                rest_time: "-",
+                notes: "Recuperação",
+                exercise_order: 1
+            }];
+        }
+
         setDays(updatedDays);
     };
 
@@ -214,15 +266,34 @@ const WorkoutCreator = ({ studentId, onSuccess, onCancel }: WorkoutCreatorProps)
                     <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                         {days.map((day, dayIndex) => (
                             <Card key={dayIndex} className="relative">
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="absolute top-2 right-2 text-muted-foreground hover:text-destructive"
-                                    onClick={() => handleRemoveDay(dayIndex)}
-                                >
-                                    <X className="w-4 h-4" />
-                                </Button>
-                                <CardHeader className="pb-2">
+                                <div className="absolute top-2 right-2 flex gap-1">
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary">
+                                                <Wand2 className="w-4 h-4" />
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                            <DropdownMenuItem onClick={() => handleSetDayType(dayIndex, "cardio")}>
+                                                <Activity className="w-4 h-4 mr-2" />
+                                                Definir como Cardio
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => handleSetDayType(dayIndex, "rest")}>
+                                                <Coffee className="w-4 h-4 mr-2" />
+                                                Definir como Descanso
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                        onClick={() => handleRemoveDay(dayIndex)}
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </Button>
+                                </div>
+                                <CardHeader className="pb-2 pr-20">
                                     <Input
                                         value={day.name}
                                         onChange={(e) => {
@@ -236,18 +307,45 @@ const WorkoutCreator = ({ studentId, onSuccess, onCancel }: WorkoutCreatorProps)
                                 <CardContent className="space-y-4">
                                     <div className="space-y-2 min-h-[100px]">
                                         {day.exercises.map((exercise, exIndex) => (
-                                            <div key={exIndex} className="bg-muted/50 p-2 rounded text-sm relative group">
-                                                <div className="font-medium pr-6">{exercise.exercise_name}</div>
-                                                <div className="text-muted-foreground text-xs">
-                                                    {exercise.sets} x {exercise.reps} • {exercise.rest_time}
+                                            <div key={exIndex} className="bg-muted/50 p-2 rounded text-sm relative group flex items-start gap-2">
+                                                <div className="flex flex-col gap-1 pt-0.5">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-4 w-4 hover:bg-background"
+                                                        disabled={exIndex === 0}
+                                                        onClick={() => handleMoveExercise(dayIndex, exIndex, "up")}
+                                                    >
+                                                        <ArrowUp className="w-3 h-3" />
+                                                    </Button>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-4 w-4 hover:bg-background"
+                                                        disabled={exIndex === day.exercises.length - 1}
+                                                        onClick={() => handleMoveExercise(dayIndex, exIndex, "down")}
+                                                    >
+                                                        <ArrowDown className="w-3 h-3" />
+                                                    </Button>
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="font-medium pr-6">{exercise.exercise_name}</div>
+                                                    <div className="text-muted-foreground text-xs">
+                                                        {exercise.sets} x {exercise.reps} • {exercise.rest_time}
+                                                    </div>
+                                                    {exercise.notes && (
+                                                        <div className="text-xs text-muted-foreground/70 mt-1 italic">
+                                                            {exercise.notes}
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 <Button
                                                     variant="ghost"
                                                     size="icon"
-                                                    className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity hover:text-destructive"
                                                     onClick={() => handleRemoveExercise(dayIndex, exIndex)}
                                                 >
-                                                    <Trash2 className="w-3 h-3 text-destructive" />
+                                                    <Trash2 className="w-3 h-3" />
                                                 </Button>
                                             </div>
                                         ))}

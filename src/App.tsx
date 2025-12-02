@@ -9,6 +9,8 @@ import NotFound from "./pages/NotFound";
 import Students from "./pages/Students";
 import StudentDetails from "./pages/StudentDetails";
 import EvaluationReport from "./pages/EvaluationReport";
+import SharedWorkouts from "./pages/SharedWorkouts";
+import SharedDiets from "./pages/SharedDiets";
 
 const queryClient = new QueryClient();
 
@@ -27,6 +29,8 @@ const App = () => (
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/dashboard/:studentId" element={<Dashboard />} />
           <Route path="/report/:id" element={<EvaluationReport />} />
+          <Route path="/share/workouts/:studentId" element={<SharedWorkouts />} />
+          <Route path="/share/diets/:studentId" element={<SharedDiets />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

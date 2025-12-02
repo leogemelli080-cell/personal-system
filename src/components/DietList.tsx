@@ -8,9 +8,10 @@ import { MEAL_STRUCTURE } from "@/constants/foodDatabase";
 
 interface DietListProps {
     studentId: string;
+    readOnly?: boolean;
 }
 
-const DietList = ({ studentId }: DietListProps) => {
+const DietList = ({ studentId, readOnly = false }: DietListProps) => {
     const { data: diets, isLoading } = useDiets(studentId);
     const deleteDiet = useDeleteDiet();
     const [expandedDiet, setExpandedDiet] = useState<string | null>(null);
@@ -56,9 +57,11 @@ const DietList = ({ studentId }: DietListProps) => {
                                 </CardDescription>
                             </div>
                             <div className="flex items-center gap-2">
-                                <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleDelete(diet.id!); }}>
-                                    <Trash2 className="w-4 h-4 text-destructive" />
-                                </Button>
+                                {!readOnly && (
+                                    <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handleDelete(diet.id!); }}>
+                                        <Trash2 className="w-4 h-4 text-destructive" />
+                                    </Button>
+                                )}
                                 {expandedDiet === diet.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                             </div>
                         </div>

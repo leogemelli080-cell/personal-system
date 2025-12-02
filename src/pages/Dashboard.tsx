@@ -10,9 +10,15 @@ import { Button } from "@/components/ui/button";
 import { useStudent } from "@/hooks/useStudents";
 import { Badge } from "@/components/ui/badge";
 import { calculateBMR, calculateTDEE, ACTIVITY_LEVELS } from "@/constants/metabolism";
-import { Zap, Flame, Camera } from "lucide-react";
+import { Zap, Flame, Camera, Dumbbell, Utensils, LayoutDashboard } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Share2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 
 const Dashboard = () => {
@@ -25,11 +31,19 @@ const Dashboard = () => {
   const [photoRightId, setPhotoRightId] = useState<string>("");
   const { toast } = useToast();
 
-  const handleShare = () => {
-    navigator.clipboard.writeText(window.location.href);
+  const handleShare = (type: "full" | "workout" | "diet") => {
+    let url = window.location.href;
+
+    if (type === "workout") {
+      url = `${window.location.origin}/share/workouts/${studentId}`;
+    } else if (type === "diet") {
+      url = `${window.location.origin}/share/diets/${studentId}`;
+    }
+
+    navigator.clipboard.writeText(url);
     toast({
       title: "Link copiado!",
-      description: "O link do dashboard foi copiado para a área de transferência.",
+      description: `Link ${type === "full" ? "do dashboard" : type === "workout" ? "dos treinos" : "da dieta"} copiado para a área de transferência.`,
     });
   };
 
@@ -93,10 +107,28 @@ const Dashboard = () => {
                 : "Acompanhe sua evolução física e análise de composição corporal"}
             </p>
           </div>
-          <Button onClick={handleShare} variant="outline" className="gap-2">
-            <Share2 className="w-4 h-4" />
-            Compartilhar
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <Share2 className="w-4 h-4" />
+                Compartilhar
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleShare("full")}>
+                <LayoutDashboard className="w-4 h-4 mr-2" />
+                Visão Geral (Completo)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleShare("workout")}>
+                <Dumbbell className="w-4 h-4 mr-2" />
+                Apenas Treinos
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleShare("diet")}>
+                <Utensils className="w-4 h-4 mr-2" />
+                Apenas Dieta
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <Tabs defaultValue="evolution" className="space-y-6">
@@ -398,7 +430,7 @@ const Dashboard = () => {
                             <Flame className="w-4 h-4 text-orange-500" />
                             <p className="text-sm text-muted-foreground">Taxa Metabólica Basal (TMB)</p>
                           </div>
-                          <p className="text-2xl font-bold">{bmr.toFixed(0)} <span className="text-sm font-normal text-muted-foreground">kcal/dia</span></p>
+                          <p className="text-2xl font-bold">{bmr?.toFixed(0)} <span className="text-sm font-normal text-muted-foreground">kcal/dia</span></p>
                           <p className="text-xs text-muted-foreground mt-1">Gasto em repouso absoluto</p>
                         </div>
 
@@ -407,7 +439,7 @@ const Dashboard = () => {
                             <Activity className="w-4 h-4 text-orange-500" />
                             <p className="text-sm text-muted-foreground">Gasto Calórico Total (GCD)</p>
                           </div>
-                          <p className="text-2xl font-bold text-orange-500">{tdee.toFixed(0)} <span className="text-sm font-normal text-muted-foreground">kcal/dia</span></p>
+                          <p className="text-2xl font-bold text-orange-500">{tdee?.toFixed(0)} <span className="text-sm font-normal text-muted-foreground">kcal/dia</span></p>
                           <p className="text-xs text-muted-foreground mt-1">Estimativa real de gasto diário</p>
                         </div>
 
@@ -536,9 +568,9 @@ const ComparisonCard = ({ title, icon, items, showDiff = true }: {
       </CardHeader>
       <CardContent className="p-4 space-y-3 flex-1 overflow-y-auto max-h-[400px] custom-scrollbar">
         {items.map((item, idx) => {
-          if (item.newVal === undefined) return null;
+          if (item.newVal === undefined || item.newVal === null) return null;
 
-          const diff = (item.oldVal !== undefined && item.newVal !== undefined) ? item.newVal - item.oldVal : 0;
+          const diff = (item.oldVal !== undefined && item.oldVal !== null && item.newVal !== undefined && item.newVal !== null) ? item.newVal - item.oldVal : 0;
           const isPositive = diff > 0;
           const isNeutral = diff === 0;
 
@@ -555,7 +587,7 @@ const ComparisonCard = ({ title, icon, items, showDiff = true }: {
             <div key={idx} className="bg-[#242555] rounded-lg p-3 flex items-center justify-between">
               <span className="text-sm text-gray-300 font-medium w-1/3">{item.label}</span>
               <div className="flex items-center gap-4 flex-1 justify-end">
-                {showDiff && item.oldVal !== undefined && (
+                {showDiff && item.oldVal !== undefined && item.oldVal !== null && (
                   <span className="text-sm text-gray-400">{item.oldVal.toFixed(1)} {item.unit}</span>
                 )}
                 <span className="text-sm font-bold">{item.newVal.toFixed(1)} {item.unit}</span>
