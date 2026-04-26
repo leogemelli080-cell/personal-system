@@ -1,8 +1,19 @@
 
 import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import logo from "@/assets/logo-vyk.png";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/button";
+import { LogOut } from "lucide-react";
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/login");
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -21,7 +32,20 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
               </div>
             </Link>
 
-
+            {user && (
+              <div className="flex items-center gap-3">
+                <span className="hidden md:block text-sm text-muted-foreground">{user.email}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSignOut}
+                  className="gap-2 text-muted-foreground hover:text-foreground"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="hidden md:block">Sair</span>
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </header>
