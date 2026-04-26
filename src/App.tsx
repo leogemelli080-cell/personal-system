@@ -33,6 +33,7 @@ const App = () => (
             <Route path="/students/:id" element={<ProtectedRoute><StudentDetails /></ProtectedRoute>} />
             <Route path="/avaliacao" element={<ProtectedRoute><Avaliacao /></ProtectedRoute>} />
             <Route path="/avaliacao/:studentId" element={<ProtectedRoute><Avaliacao /></ProtectedRoute>} />
+            <Route path="/avaliacao/:studentId/:evaluationId" element={<ProtectedRoute><Avaliacao /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/dashboard/:studentId" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/report/:id" element={<ProtectedRoute><EvaluationReport /></ProtectedRoute>} />
