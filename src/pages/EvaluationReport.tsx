@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { useAvaliacao, useAvaliacoes, useAvaliacoesStats } from "@/hooks/useAvaliacoes";
 import { useStudent } from "@/hooks/useStudents";
 import { useWorkouts } from "@/hooks/useWorkouts";
-import { useDiets } from "@/hooks/useDiets";
+import DietList from "@/components/DietList";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, Dumbbell, Utensils, Calendar, User, Download, TrendingUp, TrendingDown, Activity, Scale, Ruler, Zap, Flame } from "lucide-react";
@@ -20,7 +20,6 @@ const EvaluationReport = () => {
     const { data: student, isLoading: isLoadingStudent } = useStudent(evaluation?.student_id || "");
     const { data: allEvaluations } = useAvaliacoes(evaluation?.student_id);
     const { data: workouts } = useWorkouts(evaluation?.student_id || "");
-    const { data: diets } = useDiets(evaluation?.student_id || "");
     const { data: stats } = useAvaliacoesStats(evaluation?.student_id);
 
     const reportRef = useRef<HTMLDivElement>(null);
@@ -54,27 +53,59 @@ const EvaluationReport = () => {
         setIsGeneratingPdf(true);
 
         try {
-            const canvas = await html2canvas(reportRef.current, {
-                scale: 2, // Higher resolution
-                useCORS: true, // For images
+            // Remove overflow-hidden temporariamente para capturar conteúdo completo
+            const el = reportRef.current;
+            const prevOverflow = el.style.overflow;
+            const prevMaxH = el.style.maxHeight;
+            el.style.overflow = "visible";
+            el.style.maxHeight = "none";
+
+            // Aguarda imagens e componentes assíncronos renderizarem
+            await new Promise(resolve => setTimeout(resolve, 600));
+
+            const totalHeight = el.scrollHeight;
+            const totalWidth = el.scrollWidth;
+
+            const canvas = await html2canvas(el, {
+                scale: 2,
+                useCORS: true,
+                allowTaint: true,
                 logging: false,
-                backgroundColor: "#ffffff"
+                backgroundColor: "#ffffff",
+                width: totalWidth,
+                height: totalHeight,
+                scrollX: 0,
+                scrollY: 0,
+                windowWidth: totalWidth,
+                windowHeight: totalHeight,
             });
 
-            const imgData = canvas.toDataURL("image/jpeg", 1.0);
-            const pdf = new jsPDF({
-                orientation: "portrait",
-                unit: "px",
-                format: [canvas.width, canvas.height] // Custom format to fit the whole content in one long page if needed, or standard A4
-            });
+            // Restaura estilos
+            el.style.overflow = prevOverflow;
+            el.style.maxHeight = prevMaxH;
 
-            const pdfWidth = pdf.internal.pageSize.getWidth();
-            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+            // Gera PDF em A4 com múltiplas páginas
+            const A4_WIDTH_MM = 210;
+            const A4_HEIGHT_MM = 297;
+            const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
 
-            pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
+            const imgData = canvas.toDataURL("image/jpeg", 0.92);
+            const imgWidthMM = A4_WIDTH_MM;
+            const imgHeightMM = (canvas.height * A4_WIDTH_MM) / canvas.width;
+
+            let posY = 0;
+            let pageCount = 0;
+
+            while (posY < imgHeightMM) {
+                if (pageCount > 0) pdf.addPage();
+                pdf.addImage(imgData, "JPEG", 0, -posY, imgWidthMM, imgHeightMM);
+                posY += A4_HEIGHT_MM;
+                pageCount++;
+            }
+
             pdf.save(`Avaliacao_${student.name}_${formatDate(evaluation.data_avaliacao)}.pdf`);
         } catch (error) {
-            console.error("Error generating PDF:", error);
+            console.error("Erro ao gerar PDF:", error);
         } finally {
             setIsGeneratingPdf(false);
         }
@@ -91,7 +122,7 @@ const EvaluationReport = () => {
             </div>
 
             {/* Report Content - This is what gets captured */}
-            <div ref={reportRef} className="bg-white text-black max-w-[500px] mx-auto min-h-screen shadow-2xl overflow-hidden">
+            <div ref={reportRef} className="bg-white text-black max-w-[500px] mx-auto min-h-screen shadow-2xl overflow-visible">
 
                 {/* Header */}
                 <div className="bg-[#1a1b4b] text-white py-8 px-6">
@@ -287,11 +318,18 @@ const EvaluationReport = () => {
                                                     <h4 className="text-sm font-bold text-[#1a1b4b] mb-2 uppercase border-b pb-1">{day.name}</h4>
                                                     <ul className="space-y-2">
                                                         {day.exercises?.map((ex: any, i: number) => (
-                                                            <li key={i} className="text-sm grid grid-cols-[1fr_auto] gap-2 items-start">
-                                                                <span className="font-medium text-gray-700">{ex.exercise_name}</span>
-                                                                <span className="text-xs bg-gray-200 px-2 py-1 rounded text-gray-600 whitespace-nowrap">
-                                                                    {ex.sets}x {ex.reps}
-                                                                </span>
+                                                            <li key={i} className="text-sm">
+                                                                <div className="grid grid-cols-[1fr_auto] gap-2 items-start">
+                                                                    <span className="font-medium text-gray-700">{ex.exercise_name}</span>
+                                                                    <span className="text-xs bg-gray-200 px-2 py-1 rounded text-gray-600 whitespace-nowrap">
+                                                                        {ex.sets}x {ex.reps}
+                                                                    </span>
+                                                                </div>
+                                                                {ex.notes && (
+                                                                    <p className="text-xs text-gray-500 italic mt-0.5 ml-0">
+                                                                        📝 {ex.notes}
+                                                                    </p>
+                                                                )}
                                                             </li>
                                                         ))}
                                                     </ul>
@@ -305,47 +343,14 @@ const EvaluationReport = () => {
                     )}
 
                     {/* 6. Diet Plan */}
-                    {diets && diets.length > 0 && (
-                        <section className="break-before-page">
-                            <h2 className="text-lg font-bold flex items-center gap-2 mb-4 text-[#1a1b4b]">
-                                <Utensils className="w-5 h-5" /> Plano Alimentar
-                            </h2>
-                            {diets.map((diet) => (
-                                <div key={diet.id} className="bg-gray-50 p-4 rounded-xl border border-gray-100 mb-6 last:mb-0">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <h3 className="font-bold text-gray-900">{diet.name}</h3>
-                                            <p className="text-xs text-gray-500 mt-1">Meta: {diet.calories_target} kcal</p>
-                                        </div>
-                                        <div className="text-right text-[10px] text-gray-400">
-                                            <p>P: {diet.protein_target}g</p>
-                                            <p>C: {diet.carbs_target}g</p>
-                                            <p>G: {diet.fats_target}g</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-4">
-                                        {diet.meals?.map((meal: any) => (
-                                            <div key={meal.id} className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                                                <div className="flex justify-between items-center mb-2 border-b border-gray-100 pb-1">
-                                                    <span className="font-bold text-sm text-[#1a1b4b]">{meal.name}</span>
-                                                    <span className="text-xs text-gray-400">{meal.time}</span>
-                                                </div>
-                                                <ul className="space-y-1">
-                                                    {meal.foods?.map((food: any, i: number) => (
-                                                        <li key={i} className="text-xs flex justify-between">
-                                                            <span className="text-gray-700">{food.food_name}</span>
-                                                            <span className="font-medium text-gray-900">{food.quantity} {food.unit}</span>
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
-                        </section>
-                    )}
+                    <section className="break-before-page">
+                        <h2 className="text-lg font-bold flex items-center gap-2 mb-4 text-[#1a1b4b]">
+                            <Utensils className="w-5 h-5" /> Plano Alimentar
+                        </h2>
+                        <div className="diet-list-container">
+                            <DietList studentId={student.id} isPrintView={true} readOnly={true} />
+                        </div>
+                    </section>
 
                     {/* Footer */}
                     <div className="text-center pt-8 pb-4 text-xs text-gray-400 border-t">
