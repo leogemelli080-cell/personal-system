@@ -8,19 +8,24 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Save, User, Ruler, Activity, Camera, ArrowLeft } from "lucide-react";
-import { useCreateAvaliacao, Avaliacao } from "@/hooks/useAvaliacoes";
+import { useCreateAvaliacao, useUpdateAvaliacao, useAvaliacao, Avaliacao } from "@/hooks/useAvaliacoes";
 import { useNavigate, useParams } from "react-router-dom";
 import { useStudent } from "@/hooks/useStudents";
 import { supabase } from "@/integrations/supabase/client";
 
 import { ACTIVITY_LEVELS } from "@/constants/metabolism";
+import { calcIMC, calcPercentualGordura } from "@/hooks/useAvaliacoes";
 
 const AvaliacaoPage = () => {
-  const { studentId } = useParams<{ studentId: string }>();
+  const { studentId, evaluationId } = useParams<{ studentId: string; evaluationId?: string }>();
   const { toast } = useToast();
   const navigate = useNavigate();
   const createAvaliacao = useCreateAvaliacao();
+  const updateAvaliacao = useUpdateAvaliacao();
   const { data: student, isLoading: isLoadingStudent } = useStudent(studentId || "");
+  const { data: existingEvaluation, isLoading: isLoadingEvaluation } = useAvaliacao(evaluationId);
+
+  const isEditing = !!evaluationId;
 
   const [formData, setFormData] = useState({
     // Dados Pessoais
@@ -49,6 +54,7 @@ const AvaliacaoPage = () => {
     punho: "",
 
     // Dobras Cutâneas (mm)
+    peitoral: "",
     tricipital: "",
     subescapular: "",
     bicipital: "",
@@ -71,6 +77,8 @@ const AvaliacaoPage = () => {
     foto_costas: "",
   });
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   useEffect(() => {
     if (student) {
       const age = new Date().getFullYear() - new Date(student.birth_date).getFullYear();
@@ -82,6 +90,54 @@ const AvaliacaoPage = () => {
       }));
     }
   }, [student]);
+
+  // Load existing evaluation data when editing
+  useEffect(() => {
+    if (existingEvaluation && isEditing) {
+      setFormData({
+        nome: existingEvaluation.nome || "",
+        dataAvaliacao: existingEvaluation.data_avaliacao || new Date().toISOString().split("T")[0],
+        idade: existingEvaluation.idade?.toString() || "",
+        sexo: existingEvaluation.sexo || "M",
+        altura: existingEvaluation.altura?.toString() || "",
+        peso: existingEvaluation.peso?.toString() || "",
+        activityLevel: existingEvaluation.activity_level || "moderate",
+        pescoco: existingEvaluation.pescoco?.toString() || "",
+        ombros: existingEvaluation.ombros?.toString() || "",
+        torax: existingEvaluation.torax?.toString() || "",
+        cintura: existingEvaluation.cintura?.toString() || "",
+        abdomen: existingEvaluation.abdomen?.toString() || "",
+        quadril: existingEvaluation.quadril?.toString() || "",
+        coxaProximal: existingEvaluation.coxa_proximal?.toString() || "",
+        coxaMedial: existingEvaluation.coxa_medial?.toString() || "",
+        coxaDistal: existingEvaluation.coxa_distal?.toString() || "",
+        panturrilha: existingEvaluation.panturrilha?.toString() || "",
+        bracoRelaxado: existingEvaluation.braco_relaxado?.toString() || "",
+        bracoContraido: existingEvaluation.braco_contraido?.toString() || "",
+        antebraco: existingEvaluation.antebraco?.toString() || "",
+        punho: existingEvaluation.punho?.toString() || "",
+        peitoral: existingEvaluation.peitoral?.toString() || "",
+        tricipital: existingEvaluation.tricipital?.toString() || "",
+        subescapular: existingEvaluation.subescapular?.toString() || "",
+        bicipital: existingEvaluation.bicipital?.toString() || "",
+        axilarMedia: existingEvaluation.axilar_media?.toString() || "",
+        suprailiaca: existingEvaluation.suprailiaca?.toString() || "",
+        abdominal: existingEvaluation.abdominal?.toString() || "",
+        coxaFrontal: existingEvaluation.coxa_frontal?.toString() || "",
+        panturrilhaMedial: existingEvaluation.panturrilha_medial?.toString() || "",
+      });
+      // Load existing photos as previews
+      if (existingEvaluation.foto_frente) {
+        setPreviews(prev => ({ ...prev, foto_frente: existingEvaluation.foto_frente! }));
+      }
+      if (existingEvaluation.foto_lateral) {
+        setPreviews(prev => ({ ...prev, foto_lateral: existingEvaluation.foto_lateral! }));
+      }
+      if (existingEvaluation.foto_costas) {
+        setPreviews(prev => ({ ...prev, foto_costas: existingEvaluation.foto_costas! }));
+      }
+    }
+  }, [existingEvaluation, isEditing]);
 
   const handleChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -101,43 +157,39 @@ const AvaliacaoPage = () => {
 
   const calcularIMC = () => {
     const peso = parseFloat(formData.peso);
-    const altura = parseFloat(formData.altura) / 100;
-
-    if (peso && altura) {
-      return (peso / (altura * altura)).toFixed(2);
-    }
+    const alturaM = parseFloat(formData.altura) / 100;
+    if (peso > 0 && alturaM > 0) return calcIMC(peso, alturaM).toString();
     return "--";
   };
 
   const calcularPercentualGordura = () => {
-    // Fórmula de 7 dobras (Jackson & Pollock)
-    const dobras = [
-      parseFloat(formData.tricipital || "0"),
-      parseFloat(formData.subescapular || "0"),
-      parseFloat(formData.axilarMedia || "0"),
-      parseFloat(formData.suprailiaca || "0"),
-      parseFloat(formData.abdominal || "0"),
-      parseFloat(formData.coxaFrontal || "0"),
-      parseFloat(formData.panturrilhaMedial || "0"),
-    ];
+    const pct = calcPercentualGordura({
+      sexo: formData.sexo as "M" | "F",
+      idade: parseInt(formData.idade || "0"),
+      peitoral: formData.peitoral ? parseFloat(formData.peitoral) : undefined,
+      tricipital: formData.tricipital ? parseFloat(formData.tricipital) : undefined,
+      subescapular: formData.subescapular ? parseFloat(formData.subescapular) : undefined,
+      bicipital: formData.bicipital ? parseFloat(formData.bicipital) : undefined,
+      axilar_media: formData.axilarMedia ? parseFloat(formData.axilarMedia) : undefined,
+      suprailiaca: formData.suprailiaca ? parseFloat(formData.suprailiaca) : undefined,
+      abdominal: formData.abdominal ? parseFloat(formData.abdominal) : undefined,
+      coxa_frontal: formData.coxaFrontal ? parseFloat(formData.coxaFrontal) : undefined,
+      panturrilha_medial: formData.panturrilhaMedial ? parseFloat(formData.panturrilhaMedial) : undefined,
+    });
+    return pct !== null ? pct.toString() : "--";
+  };
 
-    const somaDobras = dobras.reduce((a, b) => a + b, 0);
-    const idade = parseInt(formData.idade || "0");
-
-    if (somaDobras > 0 && idade > 0) {
-      const densidadeCorporal = formData.sexo === "M"
-        ? 1.112 - (0.00043499 * somaDobras) + (0.00000055 * somaDobras * somaDobras) - (0.00028826 * idade)
-        : 1.097 - (0.00046971 * somaDobras) + (0.00000056 * somaDobras * somaDobras) - (0.00012828 * idade);
-
-      const percentualGordura = ((4.95 / densidadeCorporal) - 4.5) * 100;
-      return percentualGordura.toFixed(2);
-    }
+  const massaMagra = () => {
+    const peso = parseFloat(formData.peso);
+    const pct = parseFloat(calcularPercentualGordura());
+    if (!isNaN(peso) && !isNaN(pct)) return (peso - (peso * pct / 100)).toFixed(2);
     return "--";
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    setIsSubmitting(true);
     try {
       const avaliacaoData: Avaliacao = {
         student_id: studentId,
@@ -166,6 +218,7 @@ const AvaliacaoPage = () => {
         punho: formData.punho ? parseFloat(formData.punho) : undefined,
 
         // Dobras cutâneas
+        peitoral: formData.peitoral ? parseFloat(formData.peitoral) : undefined,
         tricipital: formData.tricipital ? parseFloat(formData.tricipital) : undefined,
         subescapular: formData.subescapular ? parseFloat(formData.subescapular) : undefined,
         bicipital: formData.bicipital ? parseFloat(formData.bicipital) : undefined,
@@ -182,8 +235,10 @@ const AvaliacaoPage = () => {
         const file = files[field];
         if (file) {
           const fileExt = file.name.split(".").pop();
-          const fileName = `${Math.random()}.${fileExt}`;
-          const filePath = `${field}/${fileName}`;
+          const uniqueId = Math.random().toString(36).substring(7);
+          const timestamp = Date.now();
+          const targetFolder = studentId || 'temp';
+          const filePath = `${targetFolder}/${field}/${timestamp}_${uniqueId}.${fileExt}`;
 
           const { error: uploadError } = await supabase.storage
             .from("evaluation-photos")
@@ -191,7 +246,12 @@ const AvaliacaoPage = () => {
 
           if (uploadError) {
             console.error(`Error uploading ${field}:`, uploadError);
-            continue;
+            toast({
+              title: "Erro no upload da foto",
+              description: uploadError.message || `Não foi possível enviar a foto ${field}.`,
+              variant: "destructive"
+            });
+            throw uploadError; // Stop the process if upload fails
           }
 
           const { data: { publicUrl } } = supabase.storage
@@ -203,7 +263,24 @@ const AvaliacaoPage = () => {
         }
       }
 
-      await createAvaliacao.mutateAsync(avaliacaoData);
+      // Preserve existing photos if no new upload
+      if (isEditing && existingEvaluation) {
+        if (!files.foto_frente && existingEvaluation.foto_frente) {
+          avaliacaoData.foto_frente = existingEvaluation.foto_frente;
+        }
+        if (!files.foto_lateral && existingEvaluation.foto_lateral) {
+          avaliacaoData.foto_lateral = existingEvaluation.foto_lateral;
+        }
+        if (!files.foto_costas && existingEvaluation.foto_costas) {
+          avaliacaoData.foto_costas = existingEvaluation.foto_costas;
+        }
+      }
+
+      if (isEditing && evaluationId) {
+        await updateAvaliacao.mutateAsync({ ...avaliacaoData, id: evaluationId });
+      } else {
+        await createAvaliacao.mutateAsync(avaliacaoData);
+      }
 
       // Limpa o formulário
       setFormData({
@@ -228,6 +305,7 @@ const AvaliacaoPage = () => {
         bracoContraido: "",
         antebraco: "",
         punho: "",
+        peitoral: "",
         tricipital: "",
         subescapular: "",
         bicipital: "",
@@ -250,10 +328,28 @@ const AvaliacaoPage = () => {
       }, 1500);
     } catch (error) {
       console.error("Erro ao salvar avaliação:", error);
+      let errorMessage = "Ocorreu um erro desconhecido.";
+
+      if (typeof error === "string") {
+        errorMessage = error;
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === "object" && error !== null) {
+        // @ts-ignore
+        errorMessage = error.message || error.error_description || error.details || JSON.stringify(error);
+      }
+
+      toast({
+        title: "Erro ao salvar",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  if (studentId && isLoadingStudent) {
+  if ((studentId && isLoadingStudent) || (evaluationId && isLoadingEvaluation)) {
     return (
       <Layout>
         <div className="flex justify-center py-12">
@@ -279,10 +375,12 @@ const AvaliacaoPage = () => {
 
         <div className="mb-8">
           <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-primary via-accent to-secondary bg-clip-text text-transparent">
-            Avaliação Física
+            {isEditing ? "Editar Avaliação" : "Avaliação Física"}
           </h1>
           <p className="text-muted-foreground">
-            {student ? `Nova avaliação para ${student.name}` : "Complete sua avaliação antropométrica completa"}
+            {isEditing
+              ? `Editando avaliação de ${formData.dataAvaliacao ? new Date(formData.dataAvaliacao).toLocaleDateString("pt-BR") : ""}`
+              : (student ? `Nova avaliação para ${student.name}` : "Complete sua avaliação antropométrica completa")}
           </p>
         </div>
 
@@ -418,22 +516,34 @@ const AvaliacaoPage = () => {
 
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-2 pt-6 border-t border-border">
+                  <div className="grid gap-4 md:grid-cols-3 pt-6 border-t border-border">
                     <Card className="bg-muted/30">
                       <CardHeader className="pb-3">
-                        <CardTitle className="text-sm">IMC Calculado</CardTitle>
+                        <CardTitle className="text-sm">IMC</CardTitle>
                       </CardHeader>
                       <CardContent>
                         <div className="text-3xl font-bold text-primary">{calcularIMC()}</div>
+                        <p className="text-xs text-muted-foreground mt-1">kg/m²</p>
                       </CardContent>
                     </Card>
 
                     <Card className="bg-muted/30">
                       <CardHeader className="pb-3">
-                        <CardTitle className="text-sm">% Gordura Estimado</CardTitle>
+                        <CardTitle className="text-sm">% Gordura (JP7)</CardTitle>
                       </CardHeader>
                       <CardContent>
                         <div className="text-3xl font-bold text-secondary">{calcularPercentualGordura()}%</div>
+                        <p className="text-xs text-muted-foreground mt-1">Jackson & Pollock</p>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-muted/30">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-sm">Massa Magra</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-3xl font-bold text-green-500">{massaMagra()}</div>
+                        <p className="text-xs text-muted-foreground mt-1">kg</p>
                       </CardContent>
                     </Card>
                   </div>
@@ -489,17 +599,31 @@ const AvaliacaoPage = () => {
                   <CardDescription>Medidas de composição corporal</CardDescription>
                 </CardHeader>
                 <CardContent>
+                  {formData.sexo === "M" && (
+                    <p className="text-xs text-muted-foreground mb-2">
+                      ✅ JP7 Homens: Peitoral · Axilar Média · Tríceps · Subescapular · Abdominal · Suprailíaca · Coxa Frontal
+                    </p>
+                  )}
+                  {formData.sexo === "F" && (
+                    <p className="text-xs text-muted-foreground mb-2">
+                      ✅ JP7 Mulheres: Tríceps · Subescapular · Bíceps · Axilar Média · Suprailíaca · Abdominal · Coxa Frontal
+                    </p>
+                  )}
                   <div className="grid gap-4 md:grid-cols-3">
                     {[
+                      { id: "peitoral", label: "Peitoral ♂", onlyMale: true },
                       { id: "tricipital", label: "Tricipital" },
                       { id: "subescapular", label: "Subescapular" },
-                      { id: "bicipital", label: "Bicipital" },
+                      { id: "bicipital", label: "Bicipital ♀", onlyFemale: true },
                       { id: "axilarMedia", label: "Axilar Média" },
                       { id: "suprailiaca", label: "Suprailíaca" },
                       { id: "abdominal", label: "Abdominal" },
                       { id: "coxaFrontal", label: "Coxa Frontal" },
                       { id: "panturrilhaMedial", label: "Panturrilha Medial" },
-                    ].map((field) => (
+                    ].filter(f =>
+                      (!f.onlyMale || formData.sexo === "M") &&
+                      (!f.onlyFemale || formData.sexo === "F")
+                    ).map((field) => (
                       <div key={field.id} className="space-y-2">
                         <Label htmlFor={field.id}>{field.label}</Label>
                         <Input
@@ -534,7 +658,7 @@ const AvaliacaoPage = () => {
                         <Label>{position.label}</Label>
                         <div
                           className="border-2 border-dashed border-border rounded-lg p-4 text-center hover:border-primary transition-colors cursor-pointer relative aspect-[3/4] flex flex-col items-center justify-center overflow-hidden bg-muted/10"
-                          onClick={() => document.getElementById(position.id)?.click()}
+                          onClick={() => document.getElementById(`input-${position.id}`)?.click()}
                         >
                           {previews[position.id as keyof typeof previews] ? (
                             <img
@@ -550,10 +674,9 @@ const AvaliacaoPage = () => {
                           )}
                           <input
                             type="file"
-                            id={position.id}
+                            id={`input-${position.id}`}
                             className="hidden"
                             accept="image/*"
-                            capture="environment"
                             onChange={(e) => handleFileChange(e, position.id)}
                           />
                         </div>
@@ -592,10 +715,10 @@ const AvaliacaoPage = () => {
             <Button
               type="submit"
               className="flex-1 gap-2 bg-gradient-to-r from-primary to-accent hover:opacity-90"
-              disabled={createAvaliacao.isPending}
+              disabled={createAvaliacao.isPending || updateAvaliacao.isPending || isSubmitting}
             >
               <Save className="w-4 h-4" />
-              {createAvaliacao.isPending ? "Salvando..." : "Salvar Avaliação"}
+              {(createAvaliacao.isPending || updateAvaliacao.isPending || isSubmitting) ? "Salvando..." : (isEditing ? "Atualizar Avaliação" : "Salvar Avaliação")}
             </Button>
           </div>
         </form>

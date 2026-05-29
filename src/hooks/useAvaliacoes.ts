@@ -35,9 +35,10 @@ export interface Avaliacao {
   punho?: number;
 
   // Dobras cutâneas
+  peitoral?: number;        // Homens JP7
   tricipital?: number;
   subescapular?: number;
-  bicipital?: number;
+  bicipital?: number;       // Mulheres JP7
   axilar_media?: number;
   suprailiaca?: number;
   abdominal?: number;
@@ -49,6 +50,58 @@ export interface Avaliacao {
   foto_lateral?: string;
   foto_costas?: string;
 }
+
+// ─── Fórmulas de composição corporal ────────────────────────────────────────
+
+/**
+ * Calcula IMC (kg/m²)
+ */
+export const calcIMC = (peso: number, alturaM: number): number =>
+  parseFloat((peso / (alturaM * alturaM)).toFixed(2));
+
+/**
+ * Calcula % de gordura via Jackson & Pollock 7 dobras (protocolo por sexo)
+ *
+ * Homens  (JP7-M): peitoral, axilar_media, tricipital, subescapular, abdominal, suprailiaca, coxa_frontal
+ *   (se peitoral ausente, usa panturrilha_medial como fallback)
+ * Mulheres (JP7-F): tricipital, subescapular, bicipital, axilar_media, suprailiaca, abdominal, coxa_frontal
+ */
+export const calcPercentualGordura = (av: Partial<Avaliacao>): number | null => {
+  const n = (v?: number) => v ?? 0;
+  let soma = 0;
+
+  if (av.sexo === "M") {
+    soma =
+      n(av.peitoral ?? av.panturrilha_medial) +
+      n(av.axilar_media) +
+      n(av.tricipital) +
+      n(av.subescapular) +
+      n(av.abdominal) +
+      n(av.suprailiaca) +
+      n(av.coxa_frontal);
+    if (soma === 0 || !av.idade) return null;
+    const D = 1.112 - 0.00043499 * soma + 0.00000055 * soma ** 2 - 0.00028826 * av.idade;
+    return parseFloat(((4.95 / D - 4.5) * 100).toFixed(2));
+  }
+
+  if (av.sexo === "F") {
+    soma =
+      n(av.tricipital) +
+      n(av.subescapular) +
+      n(av.bicipital) +
+      n(av.axilar_media) +
+      n(av.suprailiaca) +
+      n(av.abdominal) +
+      n(av.coxa_frontal);
+    if (soma === 0 || !av.idade) return null;
+    const D = 1.097 - 0.00046971 * soma + 0.00000056 * soma ** 2 - 0.00012828 * av.idade;
+    return parseFloat(((4.95 / D - 4.5) * 100).toFixed(2));
+  }
+
+  return null;
+};
+
+// ────────────────────────────────────────────────────────────────────────────
 
 export const useAvaliacoes = (studentId?: string) => {
   return useQuery({
@@ -94,43 +147,20 @@ export const useCreateAvaliacao = () => {
 
   return useMutation({
     mutationFn: async (avaliacao: Avaliacao) => {
-      // Calcula valores automáticos
       const altura_m = avaliacao.altura / 100;
-      const imc = avaliacao.peso / (altura_m * altura_m);
-
-      // Cálculo do percentual de gordura (fórmula 7 dobras)
-      const dobras = [
-        avaliacao.tricipital || 0,
-        avaliacao.subescapular || 0,
-        avaliacao.axilar_media || 0,
-        avaliacao.suprailiaca || 0,
-        avaliacao.abdominal || 0,
-        avaliacao.coxa_frontal || 0,
-        avaliacao.panturrilha_medial || 0,
-      ];
-
-      const somaDobras = dobras.reduce((a, b) => a + b, 0);
-
-      let percentual_gordura = 0;
-      if (somaDobras > 0) {
-        const densidadeCorporal = avaliacao.sexo === "M"
-          ? 1.112 - (0.00043499 * somaDobras) + (0.00000055 * somaDobras * somaDobras) - (0.00028826 * avaliacao.idade)
-          : 1.097 - (0.00046971 * somaDobras) + (0.00000056 * somaDobras * somaDobras) - (0.00012828 * avaliacao.idade);
-
-        percentual_gordura = ((4.95 / densidadeCorporal) - 4.5) * 100;
-      }
-
-      const massa_gorda = (avaliacao.peso * percentual_gordura) / 100;
-      const massa_magra = avaliacao.peso - massa_gorda;
+      const imc = calcIMC(avaliacao.peso, altura_m);
+      const percentual_gordura = calcPercentualGordura(avaliacao) ?? 0;
+      const massa_gorda = parseFloat(((avaliacao.peso * percentual_gordura) / 100).toFixed(2));
+      const massa_magra = parseFloat((avaliacao.peso - massa_gorda).toFixed(2));
 
       const { data, error } = await supabase
         .from("avaliacoes")
         .insert({
           ...avaliacao,
-          imc: parseFloat(imc.toFixed(2)),
-          percentual_gordura: parseFloat(percentual_gordura.toFixed(2)),
-          massa_gorda: parseFloat(massa_gorda.toFixed(2)),
-          massa_magra: parseFloat(massa_magra.toFixed(2)),
+          imc,
+          percentual_gordura,
+          massa_gorda,
+          massa_magra,
         })
         .select()
         .single();
@@ -178,6 +208,54 @@ export const useDeleteAvaliacao = () => {
     onError: (error) => {
       toast({
         title: "Erro ao excluir avaliação",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+};
+
+export const useUpdateAvaliacao = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (avaliacao: Avaliacao & { id: string }) => {
+      const altura_m = avaliacao.altura / 100;
+      const imc = calcIMC(avaliacao.peso, altura_m);
+      const percentual_gordura = calcPercentualGordura(avaliacao) ?? 0;
+      const massa_gorda = parseFloat(((avaliacao.peso * percentual_gordura) / 100).toFixed(2));
+      const massa_magra = parseFloat((avaliacao.peso - massa_gorda).toFixed(2));
+
+      const { id, student_id, created_at, ...updateData } = avaliacao;
+
+      const { data, error } = await supabase
+        .from("avaliacoes")
+        .update({
+          ...updateData,
+          imc: parseFloat(imc.toFixed(2)),
+          percentual_gordura: parseFloat(percentual_gordura.toFixed(2)),
+          massa_gorda: parseFloat(massa_gorda.toFixed(2)),
+          massa_magra: parseFloat(massa_magra.toFixed(2)),
+        })
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["avaliacoes"] });
+      queryClient.invalidateQueries({ queryKey: ["avaliacao", variables.id] });
+      queryClient.invalidateQueries({ queryKey: ["avaliacoes-stats"] });
+      toast({
+        title: "Avaliação atualizada com sucesso!",
+        description: "Os dados foram atualizados no sistema.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Erro ao atualizar avaliação",
         description: error.message,
         variant: "destructive",
       });
